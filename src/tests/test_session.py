@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
@@ -130,9 +130,12 @@ class TestSessionRecursiveDestruction(TestCase):
         self.session.register_child(parent_id, child_id)
         self.session.flush()
 
-        # `flush` writes through a MULTI/EXEC pipeline, so the hset calls
-        # land on the pipeline mock rather than directly on conn.
-        pipe = mock_conn.pipeline.return_value.__enter__.return_value
+        # `flush` writes through `conn.transaction`, which hands a WATCH pipeline to the write.
+        # Run that write against a pipeline mock that finds nothing stored yet.
+        [write, _key] = mock_conn.transaction.call_args.args
+        pipe = MagicMock()
+        pipe.hmget.return_value = [None, None]
+        write(pipe)
         pipe.hset.assert_called()
         calls = pipe.hset.call_args_list
 
